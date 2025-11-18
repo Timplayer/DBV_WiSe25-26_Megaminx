@@ -21,7 +21,7 @@ def make_kernel(k):
     k = max(1, int(k) | 1)  # odd >=1
     return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
 
-path = "./IMG_2730.jpeg"  # <-- set your file
+path = "../data/faces/blue.jpeg"  # <-- set your file
 img0 = cv2.imread(path)
 assert img0 is not None, "Image not found"
 
@@ -43,7 +43,7 @@ show(f"02 - non-black mask (Otsu thr={new_thr:.1f})", non_black)
 mask_clean = cv2.morphologyEx(non_black, cv2.MORPH_OPEN, make_kernel(5), iterations=5)
 show("03 - cleaned non-black (no bridging)", mask_clean)
 
-cnts, _ = cv2.findContours(mask_clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+cnts, _ = cv2.findContours(mask_clean, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 assert cnts, "No contours found—check lighting or thresholds."
 
 H, W = V.shape
