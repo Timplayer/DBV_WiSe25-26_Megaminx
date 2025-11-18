@@ -21,7 +21,7 @@ def make_kernel(k):
     k = max(1, int(k) | 1)  # odd >=1
     return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
 
-path = "../data/faces/blue.jpeg"  # <-- set your file
+path = "../data/faces/dark_blue.jpeg"  # <-- set your file
 img0 = cv2.imread(path)
 assert img0 is not None, "Image not found"
 
@@ -78,6 +78,10 @@ img_test = img.copy()
 selected_contours = []
 
 for i, contour in enumerate(cnts):
+    if cv2.contourArea(contour) > 50000:
+        continue
+    if cv2.contourArea(contour) < 500:
+        continue
 
     M = cv2.moments(contour)
     if M['m00'] != 0:
