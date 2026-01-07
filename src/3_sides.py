@@ -3,8 +3,12 @@ import math
 import numpy as np
 from pathlib import Path
 
+from color_mapping import get_model, classify
+
 MAX_FACES = 3
 ASPECT_MIN = 0.5  # how round an ellipse must be (1.0 == perfect circle)
+CENTER_RADIUS = 6  # sample radius (pixels) around contour center
+
 # BGR colors used to visualize each detected face separately
 FACE_COLORS = [
     (0, 0, 255),
@@ -30,6 +34,16 @@ def show(title, img, max_w=1200, max_h=800):
     if k == 27:
         cv2.destroyAllWindows()
         raise SystemExit
+
+def sample_center_color(img, hsv, x, y, radius=CENTER_RADIUS):
+    h, w = hsv.shape[:2]
+    x0, x1 = max(0, x - radius), min(w, x + radius + 1)
+    y0, y1 = max(0, y - radius), min(h, y + radius + 1)
+    patch_hsv = hsv[y0:y1, x0:x1]
+    patch_bgr = img[y0:y1, x0:x1]
+    h_mean, s_mean, v_mean = patch_hsv.reshape(-1, 3).mean(axis=0)
+    b_mean, g_mean, r_mean = patch_bgr.reshape(-1, 3).mean(axis=0)
+    return (h_mean, s_mean, v_mean), (r_mean, g_mean, b_mean)
 
 def find_face_centers(contours, minR, maxR, max_faces=MAX_FACES):
     """Return up to `max_faces` center candidates; allow ellipses (flattened circles)."""
@@ -78,11 +92,13 @@ def process_image(path):
     img0 = cv2.imread(str(path))
     assert img0 is not None, f"Image not found: {path}"
 
+    model = get_model()
+
     # normalize size
     h0, w0 = img0.shape[:2]
     scale = 1400.0 / max(w0, h0)
     img = cv2.resize(img0, (int(w0*scale), int(h0*scale)), cv2.INTER_AREA) if scale < 1 else img0.copy()
-    show(f"00 - input ({path.name})", img)
+    #show(f"00 - input ({path.name})", img)
 
     # non-black mask via Otsu on V channel
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -91,10 +107,10 @@ def process_image(path):
     thr, non_black = cv2.threshold(V, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
     #new_thr, non_black = cv2.threshold(V, thr, 255, cv2.THRESH_BINARY)  # add bias
 
-    show(f"02 - non-black mask ({path.name}) (Otsu thr={thr:.1f})", non_black)
+    #show(f"02 - non-black mask ({path.name}) (Otsu thr={thr:.1f})", non_black)
 
     mask_clean = cv2.morphologyEx(non_black, cv2.MORPH_OPEN, make_kernel(3), iterations=5)
-    show(f"03 - cleaned non-black ({path.name})", mask_clean)
+    #show(f"03 - cleaned non-black ({path.name})", mask_clean)
 
     cnts, _ = cv2.findContours(mask_clean, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     if not cnts:
@@ -124,6 +140,7 @@ def process_image(path):
         })
 
     img_test = img.copy()
+    img_fill = img.copy()
 
     contour_colors = []
 
@@ -147,24 +164,28 @@ def process_image(path):
             if distance < face["rad"] * 4:
                 face["contours"].append(contour)
 
-                h, w = hsv.shape[:2]
-                mask = np.zeros((h, w), dtype=np.uint8)
-                cv2.drawContours(mask, contour, contourIdx=-1, color=255, thickness=cv2.FILLED)
+                (h_mean, s_mean, v_mean), (r_mean, g_mean, b_mean) = sample_center_color(
+                    img, hsv, x, y
+                )
 
-                h_mean, s_mean, v_mean, _ = cv2.mean(hsv, mask=mask)
-                b_mean, g_mean, r_mean, _ = cv2.mean(img, mask=mask)
-                print(f"{path.name} - Contour {i}: H={h_mean:.1f}, S={s_mean:.1f}, V={v_mean:.1f}")
+                rgb = (int(round(r_mean)), int(round(g_mean)), int(round(b_mean)))
+                label = classify(rgb, model)
+
+                print(f"{path.name} - Contour {i}: ({rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}) -> {label}")
+
                 contour_colors.append({
                     "file": path.name,
                     "index": i,
                     "face": face_idx,
                     "hsv": (h_mean, s_mean, v_mean),
                     "rgb": (r_mean / 255.0, g_mean / 255.0, b_mean / 255.0),
+                    "label": label,
                 })
 
                 color = FACE_COLORS[face_idx % len(FACE_COLORS)]
                 cv2.drawContours(img_test, [contour], 0, color, 3)
-                cv2.putText(img_test, f"{face_idx}:{i}", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                cv2.putText(img_test, f"{label}", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                cv2.drawContours(img_fill, [contour], 0, (rgb[2], rgb[1], rgb[0]), thickness=cv2.FILLED)
 
 
     for idx, face in enumerate(faces):
@@ -180,6 +201,7 @@ def process_image(path):
             cv2.polylines(img_test, [hull], isClosed=True, color=color, thickness=3)
 
     show(f"03b - contours with shape labels ({path.name})", img_test)
+    show(f"03c - contours filled with mean color ({path.name})", img_fill)
     return contour_colors
 
 IMAGE_DIR = Path("../data/3_faces")
