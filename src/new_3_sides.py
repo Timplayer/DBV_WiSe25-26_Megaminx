@@ -274,6 +274,11 @@ def process_image(path):
 
     find_index_of_stickers(faces)
 
+    for face in faces:
+        for i, sticker in enumerate(face["sticker"]):
+            cv2.putText(img, f"{i}", sticker["center"], cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    show(f"Processed {path.name}", img)
+
     return face
 
 
