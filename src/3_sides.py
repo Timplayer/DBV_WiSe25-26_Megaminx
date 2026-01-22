@@ -4,6 +4,7 @@ import numpy as np
 from collections import defaultdict, deque
 from pathlib import Path
 
+from canonical import FACE_ORDER, RING_DIRECTION, FACE_NEIGHBORS
 from color_mapping import get_model, classify, load_color_samples
 
 MAX_FACES = 3
@@ -11,6 +12,7 @@ ASPECT_MIN = 0.5  # how round an ellipse must be (1.0 == perfect circle)
 CENTER_RADIUS = 6  # sample radius (pixels) around contour center
 STICKERS_PER_FACE = 11
 RING_SIZE = STICKERS_PER_FACE - 1
+DEBUG_NEIGHBOR_ALIGN = True
 
 # BGR colors used to visualize each detected face separately
 FACE_COLORS = [
@@ -75,6 +77,16 @@ def compute_center_guess(stickers):
     weighted = (coords.T * weights).T
     mean = weighted.sum(axis=0) / weight_sum
     return float(mean[0]), float(mean[1])
+
+def angle_diff(a, b):
+    diff = abs(a - b)
+    return min(diff, 2 * math.pi - diff)
+
+def angle_to_point(cx, cy, px, py):
+    angle = math.atan2(py - cy, px - cx)
+    if angle < 0:
+        angle += 2 * math.pi
+    return angle
 
 def order_face_stickers(face, path_name):
     stickers = face["stickers"]
@@ -147,6 +159,229 @@ def order_face_stickers(face, path_name):
     face["ordered"] = ordered
     face["label"] = center.get("label")
     return ordered
+
+def annotate_face_neighbors(faces):
+    for face in faces:
+        ordered = face.get("ordered", [])
+        if len(ordered) < 2:
+            face["neighbor_angles"] = {}
+            face["neighbor_edges"] = {}
+            face["neighbor_angles_label"] = {}
+            face["neighbor_edges_label"] = {}
+            continue
+        ring = ordered[1:]
+        cx, cy = face.get("center_refined", face["center"])
+        neighbor_angles = {}
+        neighbor_edges = {}
+        neighbor_angles_label = {}
+        neighbor_edges_label = {}
+        for other in faces:
+            if other is face:
+                continue
+            ox, oy = other.get("center_refined", other["center"])
+            direction = angle_to_point(cx, cy, ox, oy)
+            neighbor_angles[other["index"]] = direction
+            other_label = other.get("label")
+            if other_label:
+                neighbor_angles_label[other_label] = direction
+            best_idx = None
+            best_diff = None
+            for idx, sticker in enumerate(ring):
+                angle = sticker.get("angle")
+                if angle is None:
+                    continue
+                diff = angle_diff(direction, angle)
+                if best_diff is None or diff < best_diff:
+                    best_diff = diff
+                    best_idx = idx
+            if best_idx is not None:
+                neighbor_edges[other["index"]] = best_idx
+                if other_label:
+                    neighbor_edges_label[other_label] = best_idx
+        face["neighbor_angles"] = neighbor_angles
+        face["neighbor_edges"] = neighbor_edges
+        face["neighbor_angles_label"] = neighbor_angles_label
+        face["neighbor_edges_label"] = neighbor_edges_label
+
+def most_common(values):
+    counts = defaultdict(int)
+    for v in values:
+        counts[v] += 1
+    return max(counts.items(), key=lambda item: item[1])[0]
+
+def derive_canonical_rotations(face_map):
+    canonical = {}
+    for label, face in face_map.items():
+        neighbors = FACE_NEIGHBORS.get(label)
+        if not neighbors:
+            continue
+        observed = face.get("neighbor_edges_label", {})
+        if not observed:
+            continue
+        offsets = []
+        if DEBUG_NEIGHBOR_ALIGN:
+            print(f"\nCanonical align for {label}:")
+            print(f"  Observed edges: {observed}")
+            print(f"  Expected neighbor order: {neighbors}")
+        for idx, neighbor_label in enumerate(neighbors):
+            if neighbor_label not in observed:
+                continue
+            expected = (idx * 2) % RING_SIZE
+            offsets.append((observed[neighbor_label] - expected) % RING_SIZE)
+            if DEBUG_NEIGHBOR_ALIGN:
+                print(
+                    f"  Neighbor {neighbor_label}: observed={observed[neighbor_label]} "
+                    f"expected={expected} offset={(observed[neighbor_label] - expected) % RING_SIZE}"
+                )
+        if offsets:
+            canonical[label] = most_common(offsets)
+            if DEBUG_NEIGHBOR_ALIGN:
+                print(f"  -> chosen canonical rotation offset: {canonical[label]}")
+    return canonical
+
+def build_components(constraints, labels):
+    graph = defaultdict(set)
+    for a_label, _, b_label, _, _ in constraints:
+        graph[a_label].add(b_label)
+        graph[b_label].add(a_label)
+
+    components = []
+    seen = set()
+    for label in labels:
+        if label in seen:
+            continue
+        queue = deque([label])
+        seen.add(label)
+        comp = []
+        while queue:
+            cur = queue.popleft()
+            comp.append(cur)
+            for nxt in graph.get(cur, []):
+                if nxt in seen:
+                    continue
+                seen.add(nxt)
+                queue.append(nxt)
+        components.append(comp)
+    return components
+
+def apply_canonical_offsets(rotations, canonical_rotations, face_map, constraints):
+    labels = set(face_map.keys()) | set(rotations.keys()) | set(canonical_rotations.keys())
+    if not labels:
+        return rotations
+    components = build_components(constraints, labels)
+    updated = dict(rotations)
+    for comp in components:
+        offsets = []
+        for label in comp:
+            if label in canonical_rotations and label in updated:
+                offsets.append((canonical_rotations[label] - updated[label]) % RING_SIZE)
+        offset = most_common(offsets) if offsets else 0
+        if DEBUG_NEIGHBOR_ALIGN:
+            print(f"\nComponent {comp}:")
+            print(f"  offsets={offsets} -> applied offset={offset}")
+        for label in comp:
+            if label in updated:
+                updated[label] = (updated[label] + offset) % RING_SIZE
+            elif label in canonical_rotations:
+                updated[label] = canonical_rotations[label]
+    return updated
+
+def build_constraints(faces, image_name):
+    constraints = []
+    for i in range(len(faces)):
+        for j in range(i + 1, len(faces)):
+            fa = faces[i]
+            fb = faces[j]
+            if not fa.get("label") or not fb.get("label"):
+                continue
+            ia = fa.get("neighbor_edges", {}).get(fb["index"])
+            ib = fb.get("neighbor_edges", {}).get(fa["index"])
+            if ia is None or ib is None:
+                continue
+            constraints.append((fa["label"], ia, fb["label"], ib, image_name))
+    return constraints
+
+def solve_rotations(constraints):
+    adj = defaultdict(list)
+    for a_label, ia, b_label, ib, src in constraints:
+        adj[a_label].append((b_label, ia, ib, src))
+        adj[b_label].append((a_label, ib, ia, src))
+
+    rotations = {}
+    for start in adj.keys():
+        if start in rotations:
+            continue
+        rotations[start] = 0
+        queue = deque([start])
+        while queue:
+            cur = queue.popleft()
+            for other, i_cur, i_other, src in adj[cur]:
+                rot_other = (rotations[cur] + i_cur - i_other) % RING_SIZE
+                if other not in rotations:
+                    rotations[other] = rot_other
+                    queue.append(other)
+                elif rotations[other] != rot_other:
+                    print(
+                        f"Rotation conflict {cur} -> {other} from {src}: "
+                        f"{rotations[other]} vs {rot_other}"
+                    )
+    return rotations
+
+def pick_best_faces(face_obs):
+    best = {}
+    for face in face_obs:
+        label = face.get("label")
+        if not label:
+            continue
+        ordered = face.get("ordered", [])
+        score = len(ordered)
+        prev = best.get(label)
+        if prev is None or score > prev["score"]:
+            best[label] = {"face": face, "score": score}
+    return {label: entry["face"] for label, entry in best.items()}
+
+def canonical_ring_labels(ordered, rotation):
+    if not ordered:
+        return ["?"] * STICKERS_PER_FACE
+
+    center = ordered[0].get("label") or "?"
+    ring = [s.get("label") or "?" for s in ordered[1:]]
+    if len(ring) < RING_SIZE:
+        ring += ["?"] * (RING_SIZE - len(ring))
+    elif len(ring) > RING_SIZE:
+        ring = ring[:RING_SIZE]
+
+    if RING_DIRECTION == "counterclockwise":
+        ring = list(reversed(ring))
+
+    rot = rotation % RING_SIZE
+    rotated = [ring[(idx - rot) % RING_SIZE] for idx in range(RING_SIZE)]
+    return [center] + rotated
+
+def resolve_face_order(face_map):
+    if FACE_ORDER:
+        return list(FACE_ORDER)
+    try:
+        _, _, labels = load_color_samples()
+        if labels:
+            return list(labels)
+    except Exception:
+        pass
+    if face_map:
+        return sorted(face_map.keys())
+    return []
+
+def format_state_string(face_map, face_order, rotations):
+    parts = []
+    for label in face_order:
+        face = face_map.get(label)
+        if face:
+            rot = rotations.get(label, 0)
+            labels = canonical_ring_labels(face.get("ordered", []), rot)
+        else:
+            labels = ["?"] * STICKERS_PER_FACE
+        parts.append(f"{label}:{','.join(labels)}")
+    return " | ".join(parts)
 
 
 def find_face_centers(contours, minR, maxR, max_faces=MAX_FACES):
@@ -271,6 +506,8 @@ def process_image(path):
             "stickers": [],
             "ordered": [],
             "label": None,
+            "neighbor_angles": {},
+            "neighbor_edges": {},
         })
 
     img_test = img.copy()
@@ -329,6 +566,7 @@ def process_image(path):
 
     for face in faces:
         order_face_stickers(face, path.name)
+    annotate_face_neighbors(faces)
 
     for idx, face in enumerate(faces):
         color = FACE_COLORS[idx % len(FACE_COLORS)]
@@ -361,11 +599,32 @@ def main():
     if not image_paths:
         raise SystemExit(f"No image files found in {IMAGE_DIR}")
 
+    all_faces = []
     all_contour_colors = []
+    constraints = []
     for path in image_paths:
         print(f"\nProcessing {path.name}...")
-        contour_colors = process_image(path)
+        faces, contour_colors = process_image(path)
+        all_faces.extend(faces)
         all_contour_colors.extend(contour_colors)
+        constraints.extend(build_constraints(faces, path.name))
+
+    if not all_faces:
+        print("No faces detected across images; skipping final state.")
+        return
+
+    rotations = solve_rotations(constraints)
+    face_map = pick_best_faces(all_faces)
+    canonical_rotations = derive_canonical_rotations(face_map)
+    rotations = apply_canonical_offsets(rotations, canonical_rotations, face_map, constraints)
+    face_order = resolve_face_order(face_map)
+
+    if not face_order:
+        print("No face order available; skipping final state.")
+        return
+    state_string = format_state_string(face_map, face_order, rotations)
+    print("\nFINAL_STATE:")
+    print(state_string)
 
 
 if __name__ == "__main__":
