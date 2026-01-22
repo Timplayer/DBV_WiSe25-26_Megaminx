@@ -5,9 +5,11 @@ import numpy as np
 from collections import defaultdict, deque
 from pathlib import Path
 from color_mapping import get_model, classify, load_color_samples
+from src.canonical import FACE_NEIGHBORS
 
 MAX_FACES = 3
 CENTER_RADIUS = 6
+MAX_ANGLE_DIFF = ((math.pi / 3) + 0.1)
 
 def show(title, img, max_w=1200, max_h=800):
     """Show an image (auto-resized) and wait for a key.
@@ -184,27 +186,28 @@ def find_index_of_stickers(faces):
                 angle_diff = (angle - entry["angle"]) % (2 * math.pi)
                 angle_diff = min(angle_diff, 2 * math.pi - angle_diff)
 
-                if angle_diff < ((math.pi / 3) + 0.1):
+                if angle_diff < MAX_ANGLE_DIFF:
                     entry["stickers"].append(sticker)
 
 
-        first_sticker = face_angle[0]["stickers"][0] # TODO: better selection
+        first_sticker = face_angle[0]["stickers"][0]
+        for sticker in face_angle[0]["stickers"]:
+            if ((sticker["angle"] - first_sticker["angle"]) % (2*math.pi)) < (MAX_ANGLE_DIFF * 2):
+                first_sticker = sticker
 
         for sticker in stickers:
             sticker["angle"] = (sticker["angle"] - first_sticker["angle"]) % (2 * math.pi)
 
         stickers.sort(key=lambda s: s["angle"])
 
-        offset = 0 # TODO: determine offset based on known color positions
+        offset = FACE_NEIGHBORS[face["label"]].index(face_angle[0]["label"]) * 2
 
         stickers_ordered = []
         for i in range(len(stickers)):
             idx = (i + offset) % len(stickers)
             stickers_ordered.append(stickers[idx])
 
-
-
-        print(f"Face {face['label']} stickers by angle:")
+        face["sticker"] = stickers_ordered
 
     return None
 
