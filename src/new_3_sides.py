@@ -194,9 +194,10 @@ def find_index_of_stickers(faces):
         for sticker in face_angle[0]["stickers"]:
             if ((sticker["angle"] - first_sticker["angle"]) % (2*math.pi)) < (MAX_ANGLE_DIFF * 2):
                 first_sticker = sticker
+        offset_angle = float(first_sticker["angle"]) # save offset angle so we can offset the angles of all stickers
 
         for sticker in stickers:
-            sticker["angle"] = (sticker["angle"] - first_sticker["angle"]) % (2 * math.pi)
+            sticker["angle"] = (sticker["angle"] - offset_angle) % (2 * math.pi)
 
         stickers.sort(key=lambda s: s["angle"])
 
