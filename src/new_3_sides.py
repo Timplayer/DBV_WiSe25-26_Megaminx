@@ -1,4 +1,3 @@
-from jedi.inference.value.iterable import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -6,9 +5,6 @@ import cv2
 import math
 import numpy as np
 from pathlib import Path
-
-from cv2 import Mat, UMat
-from numpy import dtype, floating, integer, ndarray
 
 from color_mapping import get_model, classify
 from src.canonical import FACE_NEIGHBORS
@@ -62,8 +58,8 @@ def select_face_centers(candidates, max_faces=MAX_FACES):
     selected = []
     for score, x, y, a, b, angle, rad in candidates:
         too_close = False
-        for _, px, py, pa, pb, _, prad in selected:
-            if math.hypot(x - px, y - py) < 0.8 * (rad + prad):
+        for _, px, py, pa, pb, _, p_rad in selected:
+            if math.hypot(x - px, y - py) < 0.8 * (rad + p_rad):
                 too_close = True
                 break
         if too_close:
@@ -74,7 +70,8 @@ def select_face_centers(candidates, max_faces=MAX_FACES):
     return selected
 
 
-def find_face_centers(contours, minR, maxR, img_rgb: cv2.typing.MatLike, max_faces=MAX_FACES) -> list[Face]:
+def find_face_centers(contours: Any, min_radius: float, max_radius: float, img_rgb: cv2.typing.MatLike,
+                      max_faces: int = MAX_FACES) -> list[Face]:
     """Return up to `max_faces` center candidates; allow ellipses (flattened circles)."""
     candidates = []
     for i, c in enumerate(contours):
@@ -85,11 +82,11 @@ def find_face_centers(contours, minR, maxR, img_rgb: cv2.typing.MatLike, max_fac
         if len(c) < 5:
             continue  # need enough points to fit an ellipse
 
-        (x, y), (MA, ma), angle = cv2.fitEllipse(c)
-        a, b = 0.5 * MA, 0.5 * ma
+        (x, y), (ma_a, ma_b), angle = cv2.fitEllipse(c)
+        a, b = 0.5 * ma_a, 0.5 * ma_b
         rad = max(a, b)
 
-        if rad < minR or rad > maxR:
+        if rad < min_radius or rad > max_radius:
             continue
 
         ellipse_area = math.pi * a * b
@@ -127,17 +124,17 @@ def sample_center_color(img, x, y, radius=CENTER_RADIUS):
     return r_mean, g_mean, b_mean
 
 
-def find_sticker_for_face(face: Face, contours, img):
+def find_sticker_for_face(face: Face, contours: Any, img: cv2.typing.MatLike) -> None:
     for i, contour in enumerate(contours):
         area = cv2.contourArea(contour)
 
         if area > 50000 or area < 500:
             continue
 
-        M = cv2.moments(contour)
-        if M['m00'] != 0:
-            sticker_x = int(M['m10'] / M['m00'])
-            sticker_y = int(M['m01'] / M['m00'])
+        m = cv2.moments(contour)
+        if m['m00'] != 0:
+            sticker_x = int(m['m10'] / m['m00'])
+            sticker_y = int(m['m01'] / m['m00'])
 
             face_x = face.center[0]
             face_y = face.center[1]
@@ -164,12 +161,12 @@ def find_contours(path: Path) -> tuple[cv2.typing.MatLike, tuple[int, int], Any]
     h0, w0 = img0.shape[:2]
     scale = 2000.0 / max(w0, h0)
     img_bgr = cv2.resize(img0, (int(w0 * scale), int(h0 * scale)),
-                     cv2.INTER_AREA) if scale < 1 else img0.copy()  # ty:ignore[no-matching-overload]
+                         cv2.INTER_AREA) if scale < 1 else img0.copy()  # ty:ignore[no-matching-overload]
 
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
-    img_V = hsv[:, :, 2]
+    img_v = hsv[:, :, 2]
 
-    edge_src = cv2.GaussianBlur(img_V, (7, 7), 0)
+    edge_src = cv2.GaussianBlur(img_v, (7, 7), 0)
 
     sobel_x = cv2.Sobel(edge_src, cv2.CV_64F, 1, 0, ksize=3)
     sobel_y = cv2.Sobel(edge_src, cv2.CV_64F, 0, 1, ksize=3)
@@ -192,7 +189,7 @@ def find_contours(path: Path) -> tuple[cv2.typing.MatLike, tuple[int, int], Any]
     cv2.floodFill(edges, mask, (0, 0), 255)
     filled = cv2.bitwise_not(edges)
 
-    thr, mask_clean = cv2.threshold(img_V, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    thr, mask_clean = cv2.threshold(img_v, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     mask_clean = cv2.bitwise_and(mask_clean, filled)
 
@@ -201,12 +198,12 @@ def find_contours(path: Path) -> tuple[cv2.typing.MatLike, tuple[int, int], Any]
     if not contours:
         raise ValueError(f"{path.name}: No contours found—check lighting or thresholds.")
 
-    H, W = img_V.shape
+    h, w = img_v.shape
 
-    return img_bgr, (H, W), contours
+    return img_bgr, (h, w), contours
 
 
-def find_index_of_stickers(faces: list[Face]):
+def find_index_of_stickers(faces: list[Face]) -> None:
     for face in faces:
 
         face_angle: list[Entry] = []
@@ -251,7 +248,8 @@ def find_index_of_stickers(faces: list[Face]):
 
         first_sticker = face_angle[0].sticker[0]
         for sticker in face_angle[0].sticker:
-            if ((sticker.angle - first_sticker.angle) % (2 * math.pi)) < (MAX_ANGLE_DIFF * 2):  # ty:ignore[unsupported-operator]
+            if ((sticker.angle - first_sticker.angle) % (2 * math.pi)) < ( # ty:ignore[unsupported-operator]
+                    MAX_ANGLE_DIFF * 2):
                 first_sticker = sticker
         offset_angle: float = float(
             first_sticker.angle)  # save offset angle so we can offset the angles of all stickers  # ty:ignore[invalid-argument-type]
@@ -274,9 +272,9 @@ def find_index_of_stickers(faces: list[Face]):
 
 
 def process_image(path: Path) -> list[Face]:
-    img, (H, W), contours = find_contours(path)
+    img, (h, w), contours = find_contours(path)
 
-    min_radius, max_radius = int(0.02 * min(H, W)), int(0.5 * min(H, W))
+    min_radius, max_radius = int(0.02 * min(h, w)), int(0.5 * min(h, w))
 
     faces = find_face_centers(contours, min_radius, max_radius, max_faces=MAX_FACES, img_rgb=img)
 
@@ -285,19 +283,19 @@ def process_image(path: Path) -> list[Face]:
     show_found_stickers(faces, img.copy())
 
     find_index_of_stickers(faces)
-    show_sticker_indicies(faces, img.copy())
+    show_sticker_indices(faces, img.copy())
 
     return faces
 
 
-def show_sticker_indicies(faces: list[Face], img: Mat | ndarray[Any, dtype[integer[Any] | floating[Any]]] | UMat):
+def show_sticker_indices(faces: list[Face], img: cv2.typing.MatLike) -> None:
     for face in faces:
         for i, sticker in enumerate(face.sticker):
             cv2.putText(img, f"{i}", sticker.center, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
     show(f"2", img)
 
 
-def show_found_stickers(faces: list[Face], img: Mat | ndarray[Any, dtype[integer[Any] | floating[Any]]] | UMat):
+def show_found_stickers(faces: list[Face], img: cv2.typing.MatLike) -> None:
     for face in faces:
         for sticker in face.sticker:
             cv2.circle(img=img, center=sticker.center, radius=5, color=(0, 255, 0), thickness=-1, lineType=8, shift=0)
@@ -306,11 +304,11 @@ def show_found_stickers(faces: list[Face], img: Mat | ndarray[Any, dtype[integer
 
 
 IMAGE_DIR = Path("../data/test")
-IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 
 
 def main():
-    image_paths = sorted([p for p in IMAGE_DIR.iterdir() if p.suffix.lower() in IMAGE_EXTS and p.is_file()])
+    image_paths = sorted([p for p in IMAGE_DIR.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS and p.is_file()])
     if not image_paths:
         raise SystemExit(f"No image files found in {IMAGE_DIR}")
 
