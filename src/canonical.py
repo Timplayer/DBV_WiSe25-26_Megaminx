@@ -16,17 +16,17 @@ RING_DIRECTION = "clockwise"
 
 # Optional: neighbor layout (not required for the current state string output).
 FACE_NEIGHBORS = {
+    "black": ["light_blue", "light_yellow", "light_orange", "light_green", "light_red"],
     "light_yellow": ["dark_red", "light_orange", "black", "light_blue", "dark_green"],
     "light_orange": ["black", "light_yellow", "dark_red", "dark_blue", "light_green"],
     "light_green": ["dark_blue", "dark_yellow", "light_red", "black", "light_orange"],
-    "light_blue": ["black", "light_red", "dark_orange", "dark_green", "light_yellow"],
     "light_red": ["black", "light_green", "dark_yellow", "dark_orange", "light_blue"],
-    "white" : ["dark_green", "dark_orange", "dark_yellow", "dark_blue", "dark_red"],
+    "light_blue": ["black", "light_red", "dark_orange", "dark_green", "light_yellow"],
 
+    "dark_green": ["white", "dark_red", "light_yellow", "light_blue", "dark_orange"],
     "dark_red": ["white", "dark_blue", "light_orange", "light_yellow", "dark_green"],
     "dark_blue": ["light_orange", "dark_red", "white", "dark_yellow", "light_green"],
-    "dark_green": ["white", "dark_red", "light_yellow", "light_blue", "dark_orange"],
-    "dark_orange": ["white", "dark_green", "light_blue", "light_red", "dark_yellow"],
     "dark_yellow": ["white", "dark_orange", "light_red", "light_green", "dark_blue"],
-    "black": ["light_blue", "light_yellow", "light_orange", "light_green", "light_red"],
+    "dark_orange": ["white", "dark_green", "light_blue", "light_red", "dark_yellow"],
+    "white": ["dark_green", "dark_orange", "dark_yellow", "dark_blue", "dark_red"],
 }
