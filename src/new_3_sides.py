@@ -279,7 +279,7 @@ def process_image(path: Path) -> list[Face]:
 
     for face in faces:
         find_sticker_for_face(face, contours, img)
-    show_found_stackers(faces, img.copy())
+    show_found_stickers(faces, img.copy())
 
     find_index_of_stickers(faces)
 
@@ -291,7 +291,7 @@ def process_image(path: Path) -> list[Face]:
     return faces
 
 
-def show_found_stackers(faces: list[Face], img: Mat | ndarray[Any, dtype[integer[Any] | floating[Any]]] | UMat):
+def show_found_stickers(faces: list[Face], img: Mat | ndarray[Any, dtype[integer[Any] | floating[Any]]] | UMat):
     for face in faces:
         for sticker in face.sticker:
             cv2.circle(img=img, center=sticker.center, radius=5, color=(0, 255, 0), thickness=-1, lineType=8, shift=0)
