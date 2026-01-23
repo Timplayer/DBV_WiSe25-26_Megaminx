@@ -303,6 +303,32 @@ def show_found_stickers(faces: list[Face], img: cv2.typing.MatLike) -> None:
     show(f"1", img)
 
 
+def vote_faces(faces: list[Face]) -> dict[str, list[str]]:
+    votes: dict[str, list[dict[str, int]]] = {}
+    for face in faces:
+        if votes.get(face.label) is None:
+            votes[face.label] = []
+            for i in range(10):
+                votes[face.label].append({})
+        for i, sticker in enumerate(face.sticker):
+            if sticker.label in votes[face.label][i].keys():
+                votes[face.label][i][sticker.label] += 1
+            else:
+                votes[face.label][i][sticker.label] = 1
+
+    result: dict[str, list[str]] = {}
+    for label, vote in votes.items():
+        result[label] = []
+        for sticker in vote:
+            result[label].append(sorted(sticker.items(), key=lambda x: x[1], reverse=True)[0][0])
+
+    return result
+
+
+def show_result(voted_faces: dict[str, list[str]]) -> None:
+    print(repr(voted_faces))
+
+
 IMAGE_DIR = Path("../data/test")
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 
@@ -312,9 +338,12 @@ def main():
     if not image_paths:
         raise SystemExit(f"No image files found in {IMAGE_DIR}")
 
+    faces: list[Face] = []
     for path in image_paths:
-        process_image(path)
+        faces += process_image(path)
 
+    voted_faces: dict[str, list[str]] = vote_faces(faces)
+    show_result(voted_faces)
 
 if __name__ == "__main__":
     main()
