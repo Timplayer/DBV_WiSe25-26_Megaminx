@@ -12,11 +12,14 @@ from src.canonical import FACE_NEIGHBORS
 MAX_FACES = 3
 CENTER_RADIUS = 6
 MAX_ANGLE_DIFF = ((math.pi / 3) + 0.1)
+DEBUG = True
 
 
-def show(title, img, max_w=1200, max_h=800):
+def debug_show(title, img, max_w=1200, max_h=800):
     """Show an image (auto-resized) and wait for a key.
        Press any key to continue; ESC exits."""
+    if not DEBUG:
+        return
 
     h, w = img.shape[:2]
     s = min(max_w / w, max_h / h, 1.0)
@@ -154,6 +157,11 @@ def find_sticker_for_face(face: Face, contours: Any, img: cv2.typing.MatLike) ->
                 face.sticker.append(sticker)
 
 
+def show_contours(title:str, contours: Any, img: cv2.typing.MatLike):
+    cv2.drawContours(img, contours, -1, (0, 0, 255), 3)
+    debug_show(title, img)
+
+
 def find_contours(path: Path) -> tuple[cv2.typing.MatLike, tuple[int, int], Any]:
     img0 = cv2.imread(str(path))
     assert img0 is not None, f"Image not found: {path}"
@@ -162,9 +170,11 @@ def find_contours(path: Path) -> tuple[cv2.typing.MatLike, tuple[int, int], Any]
     scale = 2000.0 / max(w0, h0)
     img_bgr = cv2.resize(img0, (int(w0 * scale), int(h0 * scale)),
                          cv2.INTER_AREA) if scale < 1 else img0.copy()  # ty:ignore[no-matching-overload]
+    debug_show("find_contours: scaled input image", img_bgr)
 
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     img_v = hsv[:, :, 2]
+    debug_show("find_contours: brightness image", img_v)
 
     edge_src = cv2.GaussianBlur(img_v, (7, 7), 0)
 
@@ -175,6 +185,7 @@ def find_contours(path: Path) -> tuple[cv2.typing.MatLike, tuple[int, int], Any]
     sobel_mag = np.uint8(np.clip(sobel_mag, 0, 255))
 
     _, edges = cv2.threshold(sobel_mag, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)  # ty:ignore[no-matching-overload]
+    debug_show("find_contours: sobel image", edges)
 
     all_contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     small = [c for c in all_contours if cv2.contourArea(c) < 100]
@@ -183,17 +194,22 @@ def find_contours(path: Path) -> tuple[cv2.typing.MatLike, tuple[int, int], Any]
 
     edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
     edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=3)
+    debug_show("find_contours: cleaned edges image", edges)
 
     h, w = edges.shape
     mask = np.zeros((h + 2, w + 2), np.uint8)
     cv2.floodFill(edges, mask, (0, 0), 255)
     filled = cv2.bitwise_not(edges)
+    debug_show("find_contours: floodFill image", filled)
 
     thr, mask_clean = cv2.threshold(img_v, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    debug_show("find_contours: threshold image", mask_clean)
 
     mask_clean = cv2.bitwise_and(mask_clean, filled)
+    debug_show("find_contours: threshold image cleaned", mask_clean)
 
     contours, _ = cv2.findContours(mask_clean, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+    show_contours("find_contours: found contours", contours, img_bgr.copy())
 
     if not contours:
         raise ValueError(f"{path.name}: No contours found—check lighting or thresholds.")
@@ -292,7 +308,7 @@ def show_sticker_indices(faces: list[Face], img: cv2.typing.MatLike) -> None:
     for face in faces:
         for i, sticker in enumerate(face.sticker):
             cv2.putText(img, f"{i}", sticker.center, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-    show(f"2", img)
+    debug_show(f"found sticker index", img)
 
 
 def show_found_stickers(faces: list[Face], img: cv2.typing.MatLike) -> None:
@@ -300,7 +316,7 @@ def show_found_stickers(faces: list[Face], img: cv2.typing.MatLike) -> None:
         for sticker in face.sticker:
             cv2.circle(img=img, center=sticker.center, radius=5, color=(0, 255, 0), thickness=-1, lineType=8, shift=0)
 
-    show(f"1", img)
+    debug_show(f"found stickers", img)
 
 
 def vote_faces(faces: list[Face]) -> dict[str, list[str]]:
