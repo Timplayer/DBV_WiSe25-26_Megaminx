@@ -1,3 +1,4 @@
+from jedi.inference.value.iterable import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -73,7 +74,7 @@ def select_face_centers(candidates, max_faces=MAX_FACES):
     return selected
 
 
-def find_face_centers(contours, minR, maxR, max_faces=MAX_FACES):
+def find_face_centers(contours, minR, maxR, img_rgb: cv2.typing.MatLike, max_faces=MAX_FACES) -> list[Face]:
     """Return up to `max_faces` center candidates; allow ellipses (flattened circles)."""
     candidates = []
     for i, c in enumerate(contours):
@@ -100,7 +101,20 @@ def find_face_centers(contours, minR, maxR, max_faces=MAX_FACES):
             f"Candidate {i}: center=({x:.1f},{y:.1f}) axes=({a:.1f},{b:.1f}) angle={angle:.1f} area={area:.1f} fill={fill:.3f} aspect={aspect:.3f} score={score:.3f}")
         candidates.append((score, int(x), int(y), a, b, angle, rad))
 
-    return select_face_centers(candidates, max_faces=max_faces)
+    centers = select_face_centers(candidates, max_faces=max_faces)
+
+    faces: list[Face] = []
+    for score, x, y, a, b, angle, rad in centers:
+        r_mean, g_mean, b_mean = sample_center_color(img_rgb, x, y)
+
+        faces.append(Face(
+            center=(x, y, rad),
+            color=(r_mean, g_mean, b_mean),
+            sticker=[],
+            label=classify((r_mean, g_mean, b_mean), model=get_model())
+        ))
+
+    return faces
 
 
 def sample_center_color(img, x, y, radius=CENTER_RADIUS):
@@ -143,8 +157,19 @@ def find_sticker_for_face(face: Face, contours, img):
                 face.sticker.append(sticker)
 
 
-def pre_process_img(img):
-    edge_src = cv2.GaussianBlur(img, (7, 7), 0)
+def find_contours(path: Path) -> tuple[cv2.typing.MatLike, tuple[int, int], Any]:
+    img0 = cv2.imread(str(path))
+    assert img0 is not None, f"Image not found: {path}"
+
+    h0, w0 = img0.shape[:2]
+    scale = 2000.0 / max(w0, h0)
+    img_bgr = cv2.resize(img0, (int(w0 * scale), int(h0 * scale)),
+                     cv2.INTER_AREA) if scale < 1 else img0.copy()  # ty:ignore[no-matching-overload]
+
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    img_V = hsv[:, :, 2]
+
+    edge_src = cv2.GaussianBlur(img_V, (7, 7), 0)
 
     sobel_x = cv2.Sobel(edge_src, cv2.CV_64F, 1, 0, ksize=3)
     sobel_y = cv2.Sobel(edge_src, cv2.CV_64F, 0, 1, ksize=3)
@@ -167,11 +192,18 @@ def pre_process_img(img):
     cv2.floodFill(edges, mask, (0, 0), 255)
     filled = cv2.bitwise_not(edges)
 
-    thr, mask_clean = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    thr, mask_clean = cv2.threshold(img_V, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     mask_clean = cv2.bitwise_and(mask_clean, filled)
 
-    return mask_clean
+    contours, _ = cv2.findContours(mask_clean, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+
+    if not contours:
+        raise ValueError(f"{path.name}: No contours found—check lighting or thresholds.")
+
+    H, W = img_V.shape
+
+    return img_bgr, (H, W), contours
 
 
 def find_index_of_stickers(faces: list[Face]):
@@ -242,53 +274,27 @@ def find_index_of_stickers(faces: list[Face]):
 
 
 def process_image(path: Path) -> list[Face]:
-    img0 = cv2.imread(str(path))
-    assert img0 is not None, f"Image not found: {path}"
+    img, (H, W), contours = find_contours(path)
 
-    h0, w0 = img0.shape[:2]
-    scale = 2000.0 / max(w0, h0)
-    img = cv2.resize(img0, (int(w0 * scale), int(h0 * scale)),
-                     cv2.INTER_AREA) if scale < 1 else img0.copy()  # ty:ignore[no-matching-overload]
+    min_radius, max_radius = int(0.02 * min(H, W)), int(0.5 * min(H, W))
 
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    V = hsv[:, :, 2]
-
-    processed = pre_process_img(V)
-
-    contours, _ = cv2.findContours(processed, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-
-    if not contours:
-        print(f"{path.name}: No contours found—check lighting or thresholds.")
-        return []
-
-    H, W = V.shape
-    minR, maxR = int(0.02 * min(H, W)), int(0.5 * min(H, W))
-
-    centers = find_face_centers(contours, minR, maxR, max_faces=MAX_FACES)
-
-    faces: list[Face] = []
-    for score, x, y, a, b, angle, rad in centers:
-        r_mean, g_mean, b_mean = sample_center_color(img, x, y)
-
-        faces.append(Face(
-            center=(x, y, rad),
-            color=(r_mean, g_mean, b_mean),
-            sticker=[],
-            label=classify((r_mean, g_mean, b_mean), model=get_model())
-        ))
+    faces = find_face_centers(contours, min_radius, max_radius, max_faces=MAX_FACES, img_rgb=img)
 
     for face in faces:
         find_sticker_for_face(face, contours, img)
     show_found_stickers(faces, img.copy())
 
     find_index_of_stickers(faces)
+    show_sticker_indicies(faces, img.copy())
 
+    return faces
+
+
+def show_sticker_indicies(faces: list[Face], img: Mat | ndarray[Any, dtype[integer[Any] | floating[Any]]] | UMat):
     for face in faces:
         for i, sticker in enumerate(face.sticker):
             cv2.putText(img, f"{i}", sticker.center, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-    show(f"Processed {path.name}", img)
-
-    return faces
+    show(f"2", img)
 
 
 def show_found_stickers(faces: list[Face], img: Mat | ndarray[Any, dtype[integer[Any] | floating[Any]]] | UMat):
