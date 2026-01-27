@@ -1,3 +1,4 @@
+from visualize import visualize
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,7 +13,7 @@ from src.canonical import FACE_NEIGHBORS
 MAX_FACES = 3
 CENTER_RADIUS = 6
 MAX_ANGLE_DIFF = ((math.pi / 3) + 0.1)
-DEBUG = True
+DEBUG = False
 
 
 def debug_show(title, img, max_w=1200, max_h=800):
@@ -342,7 +343,7 @@ def vote_faces(faces: list[Face]) -> dict[str, list[str]]:
 
 
 def show_result(voted_faces: dict[str, list[str]]) -> None:
-    print(repr(voted_faces))
+    visualize(voted_faces)
 
 
 IMAGE_DIR = Path("../data/test")

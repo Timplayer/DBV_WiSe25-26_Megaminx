@@ -25,6 +25,10 @@ def pentagon_inner_ring(pentagon, radius_ratio=0.6):
     # centroid
     centroid = pentagon.mean(axis=0)
 
+    dy = centroid[1] - pentagon[0][1]
+    dx = centroid[0] - pentagon[0][0]
+    angle_offset = math.atan2(dy, dx)
+
     # maximal radius from centroid to a vertex
     max_r = np.max(np.linalg.norm(pentagon - centroid, axis=1))
 
@@ -33,7 +37,7 @@ def pentagon_inner_ring(pentagon, radius_ratio=0.6):
 
     points = []
     for i in range(10):
-        angle = 2 * math.pi * i / 10  # 10 points equally spaced
+        angle = angle_offset + (2 * math.pi * i / 10)  # 10 points equally spaced
         x = centroid[0] + r * math.cos(angle)
         y = centroid[1] + r * math.sin(angle)
         points.append([x, y])
@@ -84,7 +88,7 @@ def regular_pentagon_from_edge(p0, p1, outward=True):
     return np.array(vertices), center
 
 
-def main():
+def visualize(faces: dict[str, list[str]]):
     img = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
     pentagon = [(6000, 700), (6000, 700 - SIDE)]
     prev_label = ""
@@ -96,6 +100,10 @@ def main():
             i = FACE_NEIGHBORS[prev_label].index(face)-FACE_NEIGHBORS[prev_label].index(preprev_label)
         elif j > 1:
             break
+
+        color_offset = -5
+        if prev_label in FACE_NEIGHBORS[face]:
+            color_offset = -5 + FACE_NEIGHBORS[face].index(prev_label) * 2
         p0 = pentagon[(i + 1) % len(pentagon)]
         p1 = pentagon[(i) % len(pentagon)]
         preprev_label = prev_label
@@ -105,15 +113,13 @@ def main():
         pts = pentagon.astype(int)
         cv2.polylines(img, [pts], True, (255, 255, 255), int(SIDE/50)),
         cv2.circle(img, center.astype(int), 70, LABEL_TO_COLOR[face], -1)
-        for point in pentagon_inner_ring(pentagon):
-            cv2.circle(img, point, 50, (255, 255, 255), -1)
+        for i, point in enumerate(pentagon_inner_ring(pentagon)):
+            cv2.putText(img, str((i+color_offset)%10), point, cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
+            # if face in faces.keys():
+            #     cv2.circle(img, point, 50, LABEL_TO_COLOR[faces[face][(i+color_offset)%10]], -1)
 
     cv2.namedWindow("Dodecahedron Net (No Overlaps)", cv2.WINDOW_KEEPRATIO)
     cv2.imshow("Dodecahedron Net (No Overlaps)", img)
     cv2.resizeWindow("Dodecahedron Net (No Overlaps)", 500, 500)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-
-
-if __name__ == "__main__":
-    main()
