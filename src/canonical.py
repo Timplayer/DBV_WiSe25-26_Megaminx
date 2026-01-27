@@ -32,16 +32,16 @@ FACE_NEIGHBORS = {
 }
 
 LABEL_TO_COLOR = {
-    "light_yellow": (241, 233, 151),
-    "dark_yellow":  (240, 232, 66),
-    "light_blue":   (148, 195, 236),
-    "dark_blue":    (7, 98, 206),
-    "light_orange": (242, 162, 129),
-    "dark_orange":  (244, 147, 60),
-    "light_red":    (234, 199, 190),
-    "dark_red":     (228, 92, 142),
-    "black":        (25, 75, 181),
-    "white":        (226, 232, 233),
-    "light_green":  (188, 217, 192),
-    "dark_green":   (147, 211, 94),
+    "light_yellow": (151, 233, 241),
+    "dark_yellow":  (66, 232, 240),
+    "light_blue":   (236, 195, 148),
+    "dark_blue":    (206, 98, 7),
+    "light_orange": (129, 162, 242),
+    "dark_orange":  (60, 147, 244),
+    "light_red":    (190, 199, 234),
+    "dark_red":     (142, 92, 228),
+    "black":        (181, 75, 25),
+    "white":        (233, 232, 226),
+    "light_green":  (192, 217, 188),
+    "dark_green":   (94, 211, 147),
 }
