@@ -30,3 +30,18 @@ FACE_NEIGHBORS = {
     "dark_orange": ["white", "dark_green", "light_blue", "light_red", "dark_yellow"],
     "white": ["dark_green", "dark_orange", "dark_yellow", "dark_blue", "dark_red"],
 }
+
+LABEL_TO_COLOR = {
+    "light_yellow": (241, 233, 151),
+    "dark_yellow":  (240, 232, 66),
+    "light_blue":   (148, 195, 236),
+    "dark_blue":    (7, 98, 206),
+    "light_orange": (242, 162, 129),
+    "dark_orange":  (244, 147, 60),
+    "light_red":    (234, 199, 190),
+    "dark_red":     (228, 92, 142),
+    "black":        (25, 75, 181),
+    "white":        (226, 232, 233),
+    "light_green":  (188, 217, 192),
+    "dark_green":   (147, 211, 94),
+}
