@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import math
 
-from src.canonical import FACE_NEIGHBORS
+from src.canonical import FACE_NEIGHBORS, LABEL_TO_COLOR
 
 ANGLE = math.radians(72)   # unfold angle
 SIDE = 500                  # edge length in pixels
@@ -104,7 +104,7 @@ def main():
         pentagon, center = regular_pentagon_from_edge(p0, p1)
         pts = pentagon.astype(int)
         cv2.polylines(img, [pts], True, (255, 255, 255), int(SIDE/50)),
-        #cv2.putText(img, str(j), center.astype(int), cv2.FONT_HERSHEY_SIMPLEX, int(SIDE/50), (255, 255, 255), int(SIDE/50))
+        cv2.circle(img, center.astype(int), 70, LABEL_TO_COLOR[face], -1)
         for point in pentagon_inner_ring(pentagon):
             cv2.circle(img, point, 50, (255, 255, 255), -1)
 
