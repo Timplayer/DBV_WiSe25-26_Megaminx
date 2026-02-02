@@ -13,7 +13,7 @@ from src.canonical import FACE_NEIGHBORS
 MAX_FACES = 3
 CENTER_RADIUS = 6
 MAX_ANGLE_DIFF = ((math.pi / 3) + 0.1)
-DEBUG = True
+DEBUG = False
 
 
 def debug_show(title, img, max_w=1200, max_h=800):
@@ -133,7 +133,7 @@ def find_sticker_for_face(face: Face, contours: Any, img: cv2.typing.MatLike) ->
     for i, contour in enumerate(contours):
         area = cv2.contourArea(contour)
 
-        if area > 50000 or area < 500:
+        if area > 50000 or area < 1000:
             continue
 
         m = cv2.moments(contour)
@@ -359,7 +359,7 @@ def show_result(voted_faces: dict[str, list[str]]) -> None:
     visualize(voted_faces)
 
 
-IMAGE_DIR = Path("../data/test")
+IMAGE_DIR = Path("../data/normal_test_data")
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 
 

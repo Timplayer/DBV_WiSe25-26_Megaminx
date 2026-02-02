@@ -114,9 +114,9 @@ def visualize(faces: dict[str, list[str]]):
         cv2.polylines(img, [pts], True, (255, 255, 255), int(SIDE/50)),
         cv2.circle(img, center.astype(int), 70, LABEL_TO_COLOR[face], -1)
         for i, point in enumerate(pentagon_inner_ring(pentagon)):
-            cv2.putText(img, str((i+color_offset)%10), point, cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
-            # if face in faces.keys():
-            #     cv2.circle(img, point, 50, LABEL_TO_COLOR[faces[face][(i+color_offset)%10]], -1)
+            #cv2.putText(img, str((i+color_offset)%10), point, cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
+            if face in faces.keys():
+                cv2.circle(img, point, 50, LABEL_TO_COLOR[faces[face][(i+color_offset)%10]], -1)
 
     cv2.namedWindow("Dodecahedron Net (No Overlaps)", cv2.WINDOW_KEEPRATIO)
     cv2.imshow("Dodecahedron Net (No Overlaps)", img)
