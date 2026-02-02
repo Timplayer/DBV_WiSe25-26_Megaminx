@@ -13,7 +13,7 @@ from src.canonical import FACE_NEIGHBORS
 MAX_FACES = 3
 CENTER_RADIUS = 6
 MAX_ANGLE_DIFF = ((math.pi / 3) + 0.1)
-DEBUG = False
+DEBUG = True
 
 
 def debug_show(title, img, max_w=1200, max_h=800):
@@ -39,6 +39,7 @@ class Sticker:
     color: tuple[int, int, int]  # rgb
     label: str
     angle: float | None
+    dif_angle: float | None = None
 
 
 @dataclass
@@ -220,14 +221,17 @@ def find_contours(path: Path) -> tuple[cv2.typing.MatLike, tuple[int, int], Any]
     return img_bgr, (h, w), contours
 
 
-def find_index_of_stickers(faces: list[Face]) -> None:
-    for face in faces:
+def normalize_radians_np(rad):
+    return np.arctan2(np.sin(rad), np.cos(rad))
 
+def find_index_of_stickers(faces: list[Face], img) -> None:
+
+    for face in faces:
         face_angle: list[Entry] = []
+        center_x, center_y, _ = face.center
 
         for other_face in faces:
             if not face is other_face:
-                center_x, center_y, _ = face.center
                 other_center_x, other_center_y, _ = other_face.center
 
                 dx = other_center_x - center_x
@@ -245,38 +249,47 @@ def find_index_of_stickers(faces: list[Face]) -> None:
         if not stickers:
             continue
 
-        center_x, center_y, _ = face.center
-
         for sticker in stickers:
             sticker_x, sticker_y = sticker.center
             dx = sticker_x - center_x
             dy = sticker_y - center_y
 
             angle = math.atan2(dy, dx)
-
             sticker.angle = angle
 
-            for entry in face_angle:
+            for entry in face_angle[0:1]:
                 angle_diff = (angle - entry.angle) % (2 * math.pi)
                 angle_diff = min(angle_diff, 2 * math.pi - angle_diff)
 
                 if angle_diff < MAX_ANGLE_DIFF:
-                    entry.sticker.append(sticker)
 
-        first_sticker = face_angle[0].sticker[0]
-        for sticker in face_angle[0].sticker:
-            if ((sticker.angle - first_sticker.angle) % (2 * math.pi)) < ( # ty:ignore[unsupported-operator]
-                    MAX_ANGLE_DIFF * 2):
-                first_sticker = sticker
-        offset_angle: float = float(
-            first_sticker.angle)  # save offset angle so we can offset the angles of all stickers  # ty:ignore[invalid-argument-type]
+                    diff_angle = normalize_radians_np(angle - entry.angle)
+
+                    new_sticker = Sticker(
+                        center=sticker.center,
+                        color=sticker.color,
+                        label=sticker.label,
+                        angle=sticker.angle,
+                        dif_angle=diff_angle,
+                    )
+
+                    entry.sticker.append(new_sticker)
+
+        if not face_angle or not face_angle[0].sticker:
+            # Handle edge case where no stickers were associated
+            continue
+
+        face_angle[0].sticker.sort(key=lambda s: s.dif_angle)
+        best = face_angle[0].sticker[-1]
+
+        offset_angle = float(best.angle)
 
         for sticker in stickers:
             sticker.angle = (sticker.angle - offset_angle) % (2 * math.pi)  # ty:ignore[unsupported-operator]
 
         stickers.sort(key=lambda s: s.angle)
 
-        offset = FACE_NEIGHBORS[face.label].index(face_angle[0].label) * 2
+        offset = -2 - (FACE_NEIGHBORS[face.label].index(face_angle[0].label) * 2)
 
         stickers_ordered = []
         for i in range(len(stickers)):
@@ -299,7 +312,7 @@ def process_image(path: Path) -> list[Face]:
         find_sticker_for_face(face, contours, img)
     show_found_stickers(faces, img.copy())
 
-    find_index_of_stickers(faces)
+    find_index_of_stickers(faces, img.copy())
     show_sticker_indices(faces, img.copy())
 
     return faces
