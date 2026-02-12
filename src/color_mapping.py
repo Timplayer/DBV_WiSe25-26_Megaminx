@@ -14,7 +14,6 @@ DEFAULT_DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "colors.csv"
 RGB = Tuple[int, int, int]
 ColorInput = Union[str, Iterable[int]]
 
-
 def _clean_label(label: str) -> str:
     return label.strip().strip('"')
 
@@ -54,10 +53,7 @@ def load_color_samples(csv_path: Path = DEFAULT_DATA_PATH) -> tuple[np.ndarray, 
     return np.array(X, dtype=np.float32), np.array(y), labels
 
 
-def train_model(
-    csv_path: Path = DEFAULT_DATA_PATH,
-    n_neighbors: int = 5,
-) -> tuple[Pipeline, list[str]]:
+def train_model(csv_path: Path = DEFAULT_DATA_PATH, n_neighbors: int = 5) -> tuple[Pipeline, list[str]]:
     X, y, labels = load_color_samples(csv_path)
     model = Pipeline(
         [
@@ -70,7 +66,6 @@ def train_model(
 
 
 _MODEL: Optional[Pipeline] = None
-
 
 def get_model(csv_path: Path = DEFAULT_DATA_PATH) -> Pipeline:
     global _MODEL

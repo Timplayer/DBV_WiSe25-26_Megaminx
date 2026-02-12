@@ -13,7 +13,7 @@ from src.canonical import FACE_NEIGHBORS
 MAX_FACES = 3
 CENTER_RADIUS = 6
 MAX_ANGLE_DIFF = ((math.pi / 3) + 0.1)
-DEBUG = False
+DEBUG = True
 
 
 def debug_show(title, img, max_w=1200, max_h=800):
@@ -185,6 +185,8 @@ def find_contours(path: Path) -> tuple[cv2.typing.MatLike, tuple[int, int], Any]
 
     sobel_mag = np.sqrt(sobel_x ** 2 + sobel_y ** 2)
     sobel_mag = np.uint8(np.clip(sobel_mag, 0, 255))
+
+    debug_show("find_contours: sobel image", sobel_mag)
 
     _, edges = cv2.threshold(sobel_mag, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)  # ty:ignore[no-matching-overload]
     debug_show("find_contours: sobel image", edges)

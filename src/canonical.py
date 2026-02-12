@@ -1,20 +1,5 @@
-"""
-Canonical face order and (optional) neighbor layout for the final state output.
-
-Fill FACE_ORDER with your 12 face labels (center labels), in the order you want
-the final state string to list them. Leave it empty to fall back to the order
-from data/colors.csv (its header order).
-"""
-
-# Example template (replace with your actual labels)
-# FACE_ORDER = ["F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11"]
-FACE_ORDER = []
-
-# Optional: ring direction used when producing the final state string.
-# "clockwise" matches the current angle-sorting in order_face_stickers.
 RING_DIRECTION = "clockwise"
 
-# Optional: neighbor layout (not required for the current state string output).
 FACE_NEIGHBORS = {
     "black": ["light_blue", "light_yellow", "light_orange", "light_green", "light_red"],
     "light_yellow": ["dark_red", "light_orange", "black", "light_blue", "dark_green"],
